@@ -1,0 +1,11 @@
+# Minimal pip requirements (complements environment.yml)
+numpy
+pandas
+opencv-python
+Pillow
+albumentations>=1.4
+torch
+onnx
+tqdm
+pyyaml
+omegaconf

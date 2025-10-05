@@ -1,0 +1,10 @@
+# Default configuration for experiments
+dataset:
+  name: cell_counter
+  data_dir: data
+  image_size: 128
+
+training:
+  batch_size: 32
+  epochs: 10
+  lr: 0.001
