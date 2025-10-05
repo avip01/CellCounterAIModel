@@ -1,10 +1,23 @@
-# Default configuration for experiments
-dataset:
-  name: cell_counter
-  data_dir: data
-  image_size: 128
-
-training:
-  batch_size: 32
-  epochs: 10
-  lr: 0.001
+input_size: 128
+pad_fraction: 0.15
+min_area: 100
+hsv:
+  yellow:
+    lower: [20, 100, 100]
+    upper: [35, 255, 255]
+  red1:
+    lower: [0, 100, 50]
+    upper: [10, 255, 255]
+  red2:
+    lower: [170, 100, 50]
+    upper: [180, 255, 255]
+classifier:
+  width: 32
+  dropout: 0.2
+train:
+  batch_size: 64
+  epochs: 50
+  lr: 1e-3
+infer:
+  t_class: 0.5
+  nms_iou: 0.3

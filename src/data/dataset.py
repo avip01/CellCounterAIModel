@@ -1,18 +1,19 @@
-"""Dataset and dataloader utilities (placeholder)."""
+import torch
 from torch.utils.data import Dataset
-from typing import Any
+from typing import List, Dict
 
+class CropDataset(Dataset):
+    """
+    Loads crops listed in manifest.csv and returns (image_tensor, label)
+    Expects manifest with: image_path,label,source_image,...
+    """
+    def __init__(self, manifest_path: str, transforms=None):
+        # load manifest into memory, build index
+        pass
 
-class CellDataset(Dataset):
-    def __init__(self, manifest_path: str, transform=None):
-        self.manifest_path = manifest_path
-        self.transform = transform
-        # ... load manifest
-        self.items = []
+    def __len__(self):
+        pass
 
-    def __len__(self) -> int:
-        return len(self.items)
-
-    def __getitem__(self, idx) -> Any:
-        # return (image, label) placeholder
-        return None
+    def __getitem__(self, idx):
+        # read image, apply transforms, return tensor and label
+        pass

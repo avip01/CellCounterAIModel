@@ -1,11 +1,14 @@
-"""Simple model wrapper (placeholder)."""
+import torch
 import torch.nn as nn
 
-
-class SimpleClassifier(nn.Module):
-    def __init__(self, num_classes: int = 2):
+class Classifier(nn.Module):
+    """Small configurable CNN for 128x128 crop classification."""
+    def __init__(self, in_channels=3, num_classes=1, width=32, dropout=0.2):
         super().__init__()
-        self.net = nn.Sequential(nn.Flatten(), nn.Linear(128 * 128 * 3, 128), nn.ReLU(), nn.Linear(128, num_classes))
+        # small stack of Conv -> BN -> ReLU -> Pool blocks
+        # final linear layer outputs a single logit for binary classification
+        raise NotImplementedError
 
-    def forward(self, x):
-        return self.net(x)
+    @staticmethod
+    def from_config(cfg: dict):
+        return Classifier(in_channels=3, num_classes=1, width=cfg.get('width', 32))
