@@ -1,4 +1,4 @@
-# Cell-Counter-App-CS-499
+# CellCounterAIModel
 Cell Counter Application to count cells in a given tissue sample from an image.
 
 Project scaffold created. Key files and folders:
