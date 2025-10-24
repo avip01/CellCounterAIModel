@@ -15,9 +15,11 @@ Project scaffold created. Key files and folders:
 
 Quick start:
 
-1. Create the conda env: `conda env create -f environment.yml`
-2. Activate it: `conda activate cell-counter`
-3. Install pip requirements if needed: `pip install -r requirements.txt`
-
-Development notes:
-- Many modules are placeholders to be implemented. Start with `src/data/manifest_utils.py` and `src/data/dataset.py` when preparing your dataset.
+1. Download and install python 3.11: https://www.python.org/downloads/release/python-3119/
+2. Open main project root and run this command to tell the python launcher to use 3.11 and a create  virtual enviroment for it: py -3.11 -m venv .venv
+3. If using VScode, set change to python intrepeter: on windows (ctrl + shift + p) then type Python: Select Interpreter, then from the list choose the one with '.venv' in its name
+4. Install libraries, run the following commnad to activate the enviroment: .\.venv\Scripts\Activate.ps1
+5. Install the packages: python -m pip install torch torchvision scikit-learn scikit-image albumentations opencv-python tqdm matplotlib numpy
+6. Testing the data-loader: python test_classifier_loader.py
+7. Training the model, saves the model to models/cell_classifier_best.pth: python src/train/train_classifier.py
+8. After training, run inference (a sliding window that will scan an image of muscle tissue scanning cells. It will use a heatmap to assign confidence scores when it thinks it has found a cell): python src/train/train_classifier.py
