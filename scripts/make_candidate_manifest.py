@@ -1,162 +1,237 @@
 # scripts/make_candidate_manifest.py
-# Build a unified candidate manifest from your current structure:
-# - data/processed/positives/*/<... numeric chip files ...>          -> label=1, group_id inferred
-# - data/processed/negatives/crops/<... numeric chip files ...>      -> label=0, group_id mapped via negatives/summary.csv if possible
+# Build candidate_manifest.csv with real coordinates from summary.csv / cords.csv
+# Layout (per-user):
+#   Positives: data/processed/positives/crops/<GROUP>/(summary.csv|cords.csv) + chips in same folder
+#   Negatives: data/processed/negatives/(summary.csv|cords.csv) at root (chips under negatives/ or negatives/crops/)
 #
 # Output:
-# - data/manifests/candidate_manifest.csv with columns: filepath,label,group_id,source
+#   data/manifests/candidate_manifest.csv with columns:
+#     image_name, biomarker_id, crop_path, x_px, y_px
 #
-# Run from repo root:
-#   python scripts\make_candidate_manifest.py
+# Run:
+#   (.venv) python scripts/make_candidate_manifest.py
 
 from pathlib import Path
-from collections import Counter
 import pandas as pd
 import re
 
-# ---------- Config ----------
-IMG_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
-# Accept ONLY pure numeric filenames like 0000001234.png or 42.tif (reject overlays with letters)
-IMG_NUMERIC_RGX = re.compile(r"^\d+\.(png|jpg|jpeg|tif|tiff)$", re.IGNORECASE)
+ROOT = Path(__file__).resolve().parent.parent
 
-# ---------- Helpers ----------
-def posix(p: Path) -> str:
-    return p.as_posix()
+POS_CROPS_ROOT = ROOT / "data" / "processed" / "positives" / "crops"
+NEG_ROOT       = ROOT / "data" / "processed" / "negatives"
 
-def looks_like_chip(fname: str) -> bool:
-    """Accept ONLY numeric filenames; reject overlays/anything with letters."""
-    return IMG_NUMERIC_RGX.fullmatch(fname) is not None
+OUT = ROOT / "data" / "manifests" / "candidate_manifest.csv"
+OUT.parent.mkdir(parents=True, exist_ok=True)
 
-def find_group_id_from_path(p: Path) -> str:
+IMG_EXTS = [".png", ".jpg", ".jpeg", ".tif", ".tiff"]
+
+
+def clean_chip_name(val: str) -> str:
+    """Normalize chip name from Windows/absolute path to repo-relative-ish POSIX-like."""
+    if not isinstance(val, str):
+        return ""
+    s = val.strip().replace("\\", "/")
+    # Drop drive letter like C:/...
+    m = re.match(r"^[A-Za-z]:/(.*)$", s)
+    return m.group(1) if m else s
+
+
+def try_find_chip(chip_name: str, search_roots: list[Path]) -> Path:
+    """Try to locate the chip file under a list of roots, tolerant to ext mismatches."""
+    if not chip_name:
+        return Path()
+
+    norm = clean_chip_name(chip_name)
+    # 1) Try as ROOT-relative
+    p = (ROOT / norm)
+    if p.exists() and p.is_file():
+        return p
+
+    # 2) Try as absolute path (already normalized)
+    p_abs = Path(norm)
+    if p_abs.is_absolute() and p_abs.exists() and p_abs.is_file():
+        return p_abs
+
+    # 3) Try under provided roots (exact name)
+    name_only = Path(norm).name
+    for base in search_roots:
+        cand = base / name_only
+        if cand.exists() and cand.is_file():
+            return cand
+
+    # 4) Try alt extensions in provided roots
+    stem = Path(norm).stem
+    for base in search_roots:
+        for ext in IMG_EXTS:
+            cand = base / f"{stem}{ext}"
+            if cand.exists() and cand.is_file():
+                return cand
+
+    # 5) Last resort: recursive search by stem.*
+    for base in search_roots:
+        hits = list(base.rglob(stem + ".*"))
+        for h in hits:
+            if h.is_file():
+                return h
+
+    return Path()
+
+
+def load_coords_csv(folder: Path):
+    """Prefer summary.csv, fallback to cords.csv."""
+    for name in ("summary.csv", "cords.csv"):
+        f = folder / name
+        if f.exists():
+            try:
+                return pd.read_csv(f, dtype=str).fillna(""), f
+            except Exception as e:
+                print(f"[WARN] Could not read {f}: {e}")
+    return None, None
+
+
+def get_col(df: pd.DataFrame, choices: list[str]):
+    choices_lower = [c.lower() for c in df.columns]
+    for want in choices:
+        for i, have in enumerate(choices_lower):
+            if have == want.lower():
+                return df.columns[i]
+    return None
+
+
+def extract_columns(df: pd.DataFrame):
+    col_image = get_col(df, ["image", "slide", "parent"])
+    col_x     = get_col(df, ["x", "x_px", "xcoord", "x_center"])
+    col_y     = get_col(df, ["y", "y_px", "ycoord", "y_center"])
+    col_chip  = get_col(df, ["chip name", "chip", "filename", "file", "filepath"])
+    return col_image, col_x, col_y, col_chip
+
+
+def process_positives(rows: list[dict]):
+    """data/processed/positives/crops/<GROUP>/coords + chips in same group folder."""
+    if not POS_CROPS_ROOT.exists():
+        print(f"[WARN] Positives crops root missing: {POS_CROPS_ROOT}")
+        return
+
+    group_dirs = [d for d in POS_CROPS_ROOT.iterdir() if d.is_dir()]
+    if not group_dirs:
+        print(f"[WARN] No group folders under {POS_CROPS_ROOT}")
+        return
+
+    for gdir in sorted(group_dirs):
+        df, src = load_coords_csv(gdir)
+        if df is None:
+            print(f"[WARN] No summary/cords.csv in {gdir}")
+            continue
+
+        col_image, col_x, col_y, col_chip = extract_columns(df)
+        if not all([col_image, col_x, col_y, col_chip]):
+            print(f"[WARN] {src} missing required columns (need image/x/y/chip)")
+            continue
+
+        for _, r in df.iterrows():
+            chip_name = str(r[col_chip]).strip()
+            if not chip_name:
+                continue
+
+            crop_path = try_find_chip(chip_name, [gdir])
+            if not (crop_path and crop_path.exists() and crop_path.suffix.lower() in IMG_EXTS):
+                print(f"[WARN] Missing crop for {chip_name} in {gdir.name}")
+                continue
+
+            try:
+                x_px = float(str(r[col_x]).strip())
+                y_px = float(str(r[col_y]).strip())
+            except ValueError:
+                print(f"[WARN] Bad x/y in {src}: {r[col_x]}, {r[col_y]}")
+                continue
+
+            image_name = Path(str(r[col_image]).strip()).name
+            if image_name.lower().endswith(tuple(ext.lstrip(".") for ext in IMG_EXTS)):
+                image_name = Path(image_name).stem
+            else:
+                image_name = Path(image_name).stem  # safe default
+
+            rows.append({
+                "image_name": image_name,
+                "biomarker_id": 1,
+                "crop_path": crop_path.relative_to(ROOT).as_posix(),
+                "x_px": f"{x_px:.2f}",
+                "y_px": f"{y_px:.2f}",
+            })
+
+
+def process_negatives(rows: list[dict]):
     """
-    Robustly infer a group_id like '1A', '2B', etc. from any part of the file path.
-    Handles naming variants: '1a RGB', '1A-RGB', '1a_rgb', nested '.../1A/...', etc.
+    data/processed/negatives at ROOT has summary/cords.csv.
+    Chips may live under negatives/ or negatives/crops/.
     """
-    for part in [str(x) for x in p.parts][::-1]:
-        m = re.search(r"([0-9]+[A-Za-z])", part, flags=re.IGNORECASE)
-        if m:
-            return m.group(1).upper()
-    return ""
+    if not NEG_ROOT.exists():
+        print(f"[WARN] Negatives root missing: {NEG_ROOT}")
+        return
+
+    df, src = load_coords_csv(NEG_ROOT)
+    if df is None:
+        print(f"[INFO] No negatives summary/cords.csv; skipping negatives.")
+        return
+
+    col_image, col_x, col_y, col_chip = extract_columns(df)
+    if not all([col_image, col_x, col_y, col_chip]):
+        print(f"[WARN] {src} missing required columns (need image/x/y/chip) for negatives.")
+        return
+
+    # Search roots for negatives
+    search_roots = [NEG_ROOT]
+    crops_dir = NEG_ROOT / "crops"
+    if crops_dir.exists():
+        search_roots.insert(0, crops_dir)
+
+    for _, r in df.iterrows():
+        chip_name = str(r[col_chip]).strip()
+        if not chip_name:
+            continue
+
+        crop_path = try_find_chip(chip_name, search_roots)
+        if not (crop_path and crop_path.exists() and crop_path.suffix.lower() in IMG_EXTS):
+            print(f"[WARN] Missing negative crop for {chip_name}")
+            continue
+
+        try:
+            x_px = float(str(r[col_x]).strip())
+            y_px = float(str(r[col_y]).strip())
+        except ValueError:
+            print(f"[WARN] Bad x/y in {src}: {r[col_x]}, {r[col_y]}")
+            continue
+
+        image_name = Path(str(r[col_image]).strip()).name
+        image_name = Path(image_name).stem
+
+        rows.append({
+            "image_name": image_name,
+            "biomarker_id": 0,
+            "crop_path": crop_path.relative_to(ROOT).as_posix(),
+            "x_px": f"{x_px:.2f}",
+            "y_px": f"{y_px:.2f}",
+        })
+
 
 def main():
-    # Script is in scripts/, so ROOT is repo root
-    ROOT = Path(__file__).resolve().parent.parent
+    rows: list[dict] = []
 
-    POS_DIR = ROOT / "data" / "processed" / "positives"
-    NEG_DIR = ROOT / "data" / "processed" / "negatives"
-    NEG_CROPS = NEG_DIR / "crops"
-    MANIFESTS_DIR = ROOT / "data" / "manifests"
-    MANIFESTS_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_PATH = MANIFESTS_DIR / "candidate_manifest.csv"
+    process_positives(rows)
+    process_negatives(rows)
 
-    rows = []
+    df = pd.DataFrame(rows, columns=["image_name", "biomarker_id", "crop_path", "x_px", "y_px"]).drop_duplicates()
+    df.to_csv(OUT, index=False)
 
-    # -------------------------
-    # POSITIVES (label=1): include ONLY numeric-named images (ignore overlays)
-    # -------------------------
-    if POS_DIR.exists():
-        group_dirs = [d for d in POS_DIR.iterdir() if d.is_dir()]
-        for group_dir in sorted(group_dirs):
-            # Collect any image under this group folder
-            imgs = [p for p in group_dir.rglob("*") if p.suffix.lower() in IMG_EXTS]
-            if not imgs:
-                continue
-            for img in imgs:
-                if not img.is_file():
-                    continue
-                if not looks_like_chip(img.name):  # numeric-only chips
-                    continue
-                gid = find_group_id_from_path(img)
-                rows.append({
-                    "filepath": posix(img.relative_to(ROOT)),
-                    "label": 1,
-                    "group_id": gid,
-                    "source": "candidate"
-                })
-    else:
-        print(f"[WARN] Positives directory not found: {POS_DIR}")
+    # Quick QA summary
+    n = len(df)
+    n_pos = (df["biomarker_id"] == 1).sum()
+    n_neg = n - n_pos
+    print(f"[OK] Wrote {n:,} candidates → {OUT}")
+    print(f"      Positives: {n_pos:,} | Negatives: {n_neg:,}")
+    if n == 0:
+        print("[HINT] If zero, check the folder paths above and that CSV column names match (image/x/y/chip).")
 
-    # -------------------------
-    # NEGATIVES (label=0): try to map group_id via negatives/summary.csv by base filename
-    # -------------------------
-    neg_group_map = {}
-    neg_summary_path = NEG_DIR / "summary.csv"
-    if neg_summary_path.exists():
-        try:
-            df_neg_sum = pd.read_csv(neg_summary_path, dtype=str).fillna("")
-            file_col = next((c for c in ["filepath","file","chip name","chip","path","filename"] if c in df_neg_sum.columns), None)
-            group_col = next((c for c in ["group_id","group","survey id","survey_id","slide","image","origin_group"] if c in df_neg_sum.columns), None)
-            if file_col and group_col:
-                # map base filename -> group
-                df_neg_sum["__base"] = df_neg_sum[file_col].map(lambda s: Path(str(s)).name.lower())
-                neg_group_map = df_neg_sum.set_index("__base")[group_col].str.strip().to_dict()
-            else:
-                print("[INFO] negatives/summary.csv found but columns not recognized; negatives will have empty group_id.")
-        except Exception as e:
-            print(f"[INFO] Could not read negatives summary: {e}. Negatives will have empty group_id.")
-
-    if NEG_CROPS.exists():
-        for img in NEG_CROPS.rglob("*"):
-            if not img.is_file():
-                continue
-            if img.suffix.lower() not in IMG_EXTS:
-                continue
-            if not looks_like_chip(img.name):  # numeric-only chips
-                continue
-            base = img.name.lower()
-            gid = neg_group_map.get(base, "")
-            rows.append({
-                "filepath": posix(img.relative_to(ROOT)),
-                "label": 0,
-                "group_id": gid if isinstance(gid, str) else str(gid),
-                "source": "candidate"
-            })
-    else:
-        print(f"[WARN] Negatives crops directory not found: {NEG_CROPS}")
-
-    # -------------------------
-    # Build DataFrame, drop dups, verify existence, normalize, save
-    # -------------------------
-    df = pd.DataFrame(rows, columns=["filepath","label","group_id","source"]).drop_duplicates(subset=["filepath"]).reset_index(drop=True)
-
-    # keep only files that actually exist on disk
-    exists_mask = df["filepath"].map(lambda p: (ROOT / p).exists())
-    missing = df.loc[~exists_mask, "filepath"].tolist()
-    if missing:
-        print(f"[WARN] {len(missing)} paths not found; dropping (showing first 10):")
-        for m in missing[:10]:
-            print("  -", m)
-    df = df.loc[exists_mask].reset_index(drop=True)
-
-    # normalize types / blanks
-    df["label"] = df["label"].astype(int)
-    df["group_id"] = df["group_id"].astype(str).replace(["nan","NaN","None"], "").fillna("")
-    df["source"] = df["source"].astype(str)
-
-    # save
-    df.to_csv(OUT_PATH, index=False)
-
-    # -------------------------
-    # Report
-    # -------------------------
-    total = len(df)
-    pos_ct = int((df["label"] == 1).sum())
-    neg_ct = total - pos_ct
-
-    pos_groups = Counter(df.loc[df["label"] == 1, "group_id"])
-    uniq_groups = sorted(g for g in set(df["group_id"]) if g)
-
-    print(f"\nWritten: {OUT_PATH}")
-    print(f"Total rows: {total:,} | Positives: {pos_ct:,} | Negatives: {neg_ct:,}")
-    print("Positive counts by group (top 25):")
-    for gid, cnt in pos_groups.most_common(25):
-        print(f"  {gid or '<none>'}: {cnt}")
-    print(f"\nUnique group_ids detected (non-empty): {len(uniq_groups)} -> {uniq_groups}")
-
-    # Helpful hint if any positives came out with blank group_id
-    blank_pos = int(((df["label"] == 1) & (df["group_id"] == "")).sum())
-    if blank_pos > 0:
-        print(f"[NOTE] {blank_pos} positive rows have empty group_id. Check folder naming for those groups.")
 
 if __name__ == "__main__":
     main()
