@@ -1,0 +1,5 @@
+artifact_type,path
+yellowmask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\example_image_yellowmask.png
+candidates_vis,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\example_image_candidates.png
+overlay,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\example_image_overlay.png
+csv,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\example_image_detections.csv

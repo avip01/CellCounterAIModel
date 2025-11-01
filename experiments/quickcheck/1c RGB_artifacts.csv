@@ -1,0 +1,9 @@
+artifact_type,path
+debug_mask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_edgeband.png
+debug_mask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_green.png
+debug_mask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_yellow.png
+debug_mask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_gatemask.png
+yellowmask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_yellowmask.png
+candidates_vis,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_candidates.png
+overlay,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_overlay.png
+csv,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_detections.csv
