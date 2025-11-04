@@ -1,5 +1,5 @@
 artifact_type,path
-yellowmask,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_yellowmask.png
-candidates_vis,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_candidates.png
-overlay,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_overlay.png
-csv,C:\Users\Avi\IdeaProjects\CellCounterAIModel\experiments\quickcheck\1c RGB_detections.csv
+yellowmask,C:\Users\bento\git\CellCounterAIModel\experiments\quickcheck\1c RGB_yellowmask.png
+candidates_vis,C:\Users\bento\git\CellCounterAIModel\experiments\quickcheck\1c RGB_candidates.png
+overlay,C:\Users\bento\git\CellCounterAIModel\experiments\quickcheck\1c RGB_overlay.png
+csv,C:\Users\bento\git\CellCounterAIModel\experiments\quickcheck\1c RGB_detections.csv

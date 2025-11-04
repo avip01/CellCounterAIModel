@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
+import json
 
 
 # -------------------- utils --------------------
@@ -311,6 +312,17 @@ def save_artifacts_csv(csv_path: str, artifact_rows: List[Tuple[str, str]]):
         for t, p in artifact_rows:
             writer.writerow([t, os.path.abspath(p)])
 
+# -------------------- for writing pnt files to be put into DDG
+# (pnt files are json files) --------------------
+def save_detections_pnt(pnt_path: str, coords_xy: np.ndarray):
+    os.makedirs(os.path.dirname(pnt_path), exist_ok=True)
+    #TODO: add shape functionality (just a default circle for the output of the model)
+    package = {'classes': ["output"], 'points': {pnt_path:{"output":[]}}, 'colors': {"output":[255,255,255]}, 'metadata': {'survey_id': "", 'coordinates': {}}, 'custom_fields': {"fields": [], "data": {}}, 'ui': {"grid": {"size": 200,"color": [255,255,255]},"point": {"radius": 25,"color": [255,255,0]}}}
+    for(i, (x, y)) in enumerate(coords_xy):
+        package['points'][pnt_path]["output"].append({'x': float(x), 'y': float(y)})
+    with open(pnt_path, "w") as f:
+        json.dump(package, f, indent=2)
+
 
 # -------------------- main --------------------
 def main():
@@ -603,12 +615,15 @@ def main():
     # 4) write CSVs
     detections_csv_path = os.path.join(args.out_dir, f"{stem}_detections.csv")
     artifacts_csv_path = os.path.join(args.out_dir, f"{stem}_artifacts.csv")
+    artifacts_csv_path = os.path.join(args.out_dir, f"{stem}.pnt")
     save_detections_csv(detections_csv_path, sel_xy, sel_sc)
     artifacts.append(("csv", detections_csv_path))
     save_artifacts_csv(artifacts_csv_path, artifacts)
+    save_detections_pnt(os.path.join(args.out_dir, f"{stem}.pnt"), sel_xy)
 
     print(f"[OK] Saved overlay → {out_path}  (detections: {len(sel_xy)})")
     print(f"[OK] Wrote CSVs: {detections_csv_path}, {artifacts_csv_path}")
+    print(f"[OK] Wrote PNT: {stem}.pnt")
 
 
 if __name__ == "__main__":
